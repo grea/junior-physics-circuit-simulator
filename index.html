@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>初中物理电路模拟器（教具版）</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="panel">
+          <h1>电路教具</h1>
+          <p class="subtitle">可拖拽 · 可连线 · MNA 求解</p>
+
+          <div class="tool-group">
+            <button class="tool-button active" data-tool="select">选择</button>
+            <button class="tool-button" data-tool="connect">连接</button>
+            <button class="tool-button" data-tool="delete">删除</button>
+          </div>
+
+          <div class="palette">
+            <button class="component-button" data-type="battery">电池</button>
+            <button class="component-button" data-type="bulb">灯泡</button>
+            <button class="component-button" data-type="resistor">电阻</button>
+            <button class="component-button" data-type="switch">开关</button>
+          </div>
+
+          <div class="panel-block">
+            <div class="line-row">
+              <span>总电流</span>
+              <strong id="currentDisplay">0.00 A</strong>
+            </div>
+            <div class="line-row">
+              <span>总电阻</span>
+              <strong id="resistanceDisplay">∞ Ω</strong>
+            </div>
+            <div class="line-row">
+              <span>总功率</span>
+              <strong id="powerDisplay">0.00 W</strong>
+            </div>
+            <div class="line-row">
+              <span>亮度</span>
+              <strong id="brightnessDisplay">0%</strong>
+            </div>
+          </div>
+
+          <div class="panel-block formula-box">
+            <h2>课堂公式</h2>
+            <p>欧姆定律：V = I × R</p>
+            <p>串联：R 总 = R1 + R2 + ...</p>
+            <p>并联：1/R 总 = 1/R1 + 1/R2 + ...</p>
+          </div>
+
+          <button id="solveBtn" class="primary-button">重新计算电路</button>
+        </div>
+      </aside>
+
+      <main class="board-wrap">
+        <svg id="board" viewBox="0 0 960 560" aria-label="电路板"></svg>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
