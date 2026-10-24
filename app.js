@@ -1,48 +1,102 @@
-# 初中物理电路模拟器
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>初中物理电路模拟器</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">教学演示工具</p>
+          <h1>初中物理电路模拟器</h1>
+        </div>
+        <div class="badge">MNA 求解器</div>
+      </header>
 
-一个面向初中物理教学的交互式电路模拟器，支持：
+      <main class="layout">
+        <aside class="sidebar panel">
+          <h2>电路类型</h2>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="series">串联电路</button>
+            <button class="preset-btn" data-preset="parallel">并联电路</button>
+            <button class="preset-btn" data-preset="mixed">混合电路</button>
+          </div>
 
-- 串联电路
-- 并联电路
-- 混合电路
-- 电池、电阻、灯泡、开关
-- 基于 MNA（Modified Nodal Analysis）方法求解节点电压和支路电流
-- 同时展示：实物图 / 电路图
+          <div class="control-group">
+            <label for="batteryVoltage">电池电压</label>
+            <div class="range-wrap">
+              <input id="batteryVoltage" type="range" min="1" max="24" step="1" value="9" />
+              <span id="batteryVoltageValue">9 V</span>
+            </div>
+          </div>
 
-## 运行方式
+          <div class="control-group">
+            <label for="bulbResistance">灯泡电阻</label>
+            <div class="range-wrap">
+              <input id="bulbResistance" type="range" min="4" max="60" step="1" value="12" />
+              <span id="bulbResistanceValue">12 Ω</span>
+            </div>
+          </div>
 
-```bash
-npm install
-npm start
-```
+          <div class="control-group checkbox-wrap">
+            <label class="check-row">
+              <input id="switchClosed" type="checkbox" checked />
+              <span>开关闭合</span>
+            </label>
+          </div>
 
-然后打开浏览器访问：
+          <div class="formula-box">
+            <h3>关键公式</h3>
+            <p>欧姆定律：V = I × R</p>
+            <p>串联：R 总 = R1 + R2 + ...</p>
+            <p>并联：1/R 总 = 1/R1 + 1/R2 + ...</p>
+          </div>
+        </aside>
 
-```text
-http://localhost:3000
-```
+        <section class="content panel">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="label">总电流</span>
+              <strong id="currentReading">0.00 A</strong>
+            </div>
+            <div class="stat-card">
+              <span class="label">总功率</span>
+              <strong id="powerReading">0.00 W</strong>
+            </div>
+            <div class="stat-card">
+              <span class="label">亮度</span>
+              <strong id="brightnessReading">0%</strong>
+            </div>
+            <div class="stat-card">
+              <span class="label">总电阻</span>
+              <strong id="resistanceReading">0 Ω</strong>
+            </div>
+          </div>
 
-## 设计思路
+          <div class="drawings">
+            <article class="diagram-card">
+              <div class="diagram-header">
+                <h2>实物图</h2>
+                <span id="physicalLabel">串联电路</span>
+              </div>
+              <svg id="physicalSvg" viewBox="0 0 620 260" aria-label="实物图"></svg>
+            </article>
 
-- 使用 MNA 做电路求解，适合处理电压源和电阻组成的教学电路。
-- 利用 SVG 直接绘制电路图与实物图，便于课堂讲解。
-- 对灯泡使用等效电阻模型，显示电流、功率和亮度。 
+            <article class="diagram-card">
+              <div class="diagram-header">
+                <h2>电路图</h2>
+                <span id="schematicLabel">串联电路</span>
+              </div>
+              <svg id="schematicSvg" viewBox="0 0 620 260" aria-label="电路图"></svg>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
 
-## 适用场景
-
-- 课堂演示
-- 物理实验辅助教学
-- 学生自主练习
-- 竞赛/项目展示
-
-## 目录说明
-
-- `index.html`：页面结构
-- `styles.css`：界面样式
-- `app.js`：电路求解与渲染逻辑
-- `server.js`：静态服务器
-
-## 版权说明
-
-本项目旨在教育与教学展示使用，适合学习和二次开发。
-
+    <script src="app.js"></script>
+  </body>
+</html>
