@@ -1,26 +1,113 @@
+const svg = document.getElementById('board');
+const solveBtn = document.getElementById('solveBtn');
+const currentDisplay = document.getElementById('currentDisplay');
+const resistanceDisplay = document.getElementById('resistanceDisplay');
+const powerDisplay = document.getElementById('powerDisplay');
+const brightnessDisplay = document.getElementById('brightnessDisplay');
+
 const state = {
-  preset: 'series',
-  batteryVoltage: 9,
-  bulbResistance: 12,
-  switchClosed: true,
+  tool: 'select',
+  components: [],
+  wires: [],
+  selectedComponentId: null,
+  pendingTerminal: null,
+  drag: null,
+  lastSolved: null,
 };
 
-const els = {
-  batteryVoltage: document.getElementById('batteryVoltage'),
-  bulbResistance: document.getElementById('bulbResistance'),
-  switchClosed: document.getElementById('switchClosed'),
-  batteryVoltageValue: document.getElementById('batteryVoltageValue'),
-  bulbResistanceValue: document.getElementById('bulbResistanceValue'),
-  currentReading: document.getElementById('currentReading'),
-  powerReading: document.getElementById('powerReading'),
-  brightnessReading: document.getElementById('brightnessReading'),
-  resistanceReading: document.getElementById('resistanceReading'),
-  physicalSvg: document.getElementById('physicalSvg'),
-  schematicSvg: document.getElementById('schematicSvg'),
-  physicalLabel: document.getElementById('physicalLabel'),
-  schematicLabel: document.getElementById('schematicLabel'),
-  buttons: Array.from(document.querySelectorAll('.preset-btn')),
+const typeMeta = {
+  battery: { label: '电池', voltage: 9, terminals: 2 },
+  bulb: { label: '灯泡', resistance: 12, terminals: 2 },
+  resistor: { label: '电阻', resistance: 20, terminals: 2 },
+  switch: { label: '开关', resistance: 0.01, terminals: 2, closed: true },
 };
+
+function uid(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createComponent(type, x, y) {
+  const meta = typeMeta[type];
+  const component = {
+    id: uid(type),
+    type,
+    x,
+    y,
+    voltage: type === 'battery' ? 9 : undefined,
+    resistance: meta.resistance ?? 12,
+    closed: type === 'switch' ? true : undefined,
+  };
+
+  if (type === 'switch') {
+    component.closed = true;
+    component.resistance = 0.01;
+  }
+
+  if (type === 'bulb') {
+    component.resistance = 12;
+  }
+
+  if (type === 'resistor') {
+    component.resistance = 20;
+  }
+
+  return component;
+}
+
+function makeDefaultCircuit() {
+  const battery = createComponent('battery', 120, 260);
+  battery.voltage = 9;
+
+  const switchComponent = createComponent('switch', 300, 260);
+  switchComponent.closed = true;
+
+  const bulb = createComponent('bulb', 500, 260);
+  bulb.resistance = 12;
+
+  const resistor = createComponent('resistor', 680, 260);
+  resistor.resistance = 30;
+
+  state.components = [battery, switchComponent, bulb, resistor];
+  state.wires = [
+    { a: `${battery.id}:0`, b: `${switchComponent.id}:0` },
+    { a: `${switchComponent.id}:1`, b: `${bulb.id}:0` },
+    { a: `${bulb.id}:1`, b: `${resistor.id}:0` },
+    { a: `${resistor.id}:1`, b: `${battery.id}:1` },
+  ];
+}
+
+function getComponentTerminalPoints(component) {
+  const { x, y } = component;
+  if (component.type === 'battery') {
+    return [
+      { x: x - 48, y },
+      { x: x + 48, y },
+    ];
+  }
+  if (component.type === 'switch') {
+    return [
+      { x: x - 42, y },
+      { x: x + 42, y },
+    ];
+  }
+  return [
+    { x: x - 40, y },
+    { x: x + 40, y },
+  ];
+}
+
+function terminalId(componentId, index) {
+  return `${componentId}:${index}`;
+}
+
+function getTerminalPosition(component, index) {
+  const points = getComponentTerminalPoints(component);
+  return points[index];
+}
+
+function findComponentById(componentId) {
+  return state.components.find((component) => component.id === componentId) || null;
+}
 
 function formatNumber(value, digits = 2) {
   return Number(value).toFixed(digits);
@@ -32,414 +119,543 @@ function solveLinearSystem(matrix, vector) {
   const b = [...vector];
 
   for (let i = 0; i < n; i += 1) {
-    let pivotRow = i;
-    let maxValue = Math.abs(A[i][i] || 0);
+    let piv = i;
+    let maxAbs = Math.abs(A[i][i] || 0);
 
-    for (let r = i + 1; r < n; r += 1) {
-      const v = Math.abs(A[r][i] || 0);
-      if (v > maxValue) {
-        maxValue = v;
-        pivotRow = r;
+    for (let row = i + 1; row < n; row += 1) {
+      const val = Math.abs(A[row][i] || 0);
+      if (val > maxAbs) {
+        maxAbs = val;
+        piv = row;
       }
     }
 
-    if (Math.abs(A[pivotRow][i] || 0) < 1e-12) {
-      throw new Error('矩阵奇异，无法求解该电路。');
+    if (Math.abs(A[piv][i] || 0) < 1e-12) {
+      throw new Error('电路矩阵奇异，无法求解。');
     }
 
-    if (pivotRow !== i) {
-      [A[i], A[pivotRow]] = [A[pivotRow], A[i]];
-      [b[i], b[pivotRow]] = [b[pivotRow], b[i]];
+    if (piv !== i) {
+      [A[i], A[piv]] = [A[piv], A[i]];
+      [b[i], b[piv]] = [b[piv], b[i]];
     }
 
     const pivot = A[i][i];
-    for (let j = i; j < n; j += 1) {
-      A[i][j] /= pivot;
+    for (let col = i; col < n; col += 1) {
+      A[i][col] /= pivot;
     }
     b[i] /= pivot;
 
-    for (let r = 0; r < n; r += 1) {
-      if (r === i) continue;
-      const factor = A[r][i];
+    for (let row = 0; row < n; row += 1) {
+      if (row === i) continue;
+      const factor = A[row][i];
       if (Math.abs(factor) < 1e-12) continue;
-      for (let j = i; j < n; j += 1) {
-        A[r][j] -= factor * A[i][j];
+      for (let col = i; col < n; col += 1) {
+        A[row][col] -= factor * A[i][col];
       }
-      b[r] -= factor * b[i];
+      b[row] -= factor * b[i];
     }
   }
 
   return b;
 }
 
-function createCircuit(preset, batteryVoltage, bulbResistance, switchClosed) {
-  if (!switchClosed) {
+class DisjointSet {
+  constructor() {
+    this.parent = new Map();
+    this.rank = new Map();
+  }
+
+  ensure(value) {
+    if (!this.parent.has(value)) {
+      this.parent.set(value, value);
+      this.rank.set(value, 0);
+    }
+  }
+
+  find(value) {
+    this.ensure(value);
+    if (this.parent.get(value) !== value) {
+      this.parent.set(value, this.find(this.parent.get(value)));
+    }
+    return this.parent.get(value);
+  }
+
+  union(a, b) {
+    this.ensure(a);
+    this.ensure(b);
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra === rb) return;
+    const rankA = this.rank.get(ra) || 0;
+    const rankB = this.rank.get(rb) || 0;
+    if (rankA < rankB) {
+      this.parent.set(ra, rb);
+    } else if (rankA > rankB) {
+      this.parent.set(rb, ra);
+    } else {
+      this.parent.set(rb, ra);
+      this.rank.set(ra, rankA + 1);
+    }
+  }
+}
+
+function addConductance(matrix, nodeIndex, aNode, bNode, conductance) {
+  if (aNode === null && bNode === null) return;
+
+  const aIdx = aNode !== null ? nodeIndex.get(aNode) : null;
+  const bIdx = bNode !== null ? nodeIndex.get(bNode) : null;
+
+  if (aIdx !== null && bIdx !== null) {
+    matrix[aIdx][aIdx] += conductance;
+    matrix[bIdx][bIdx] += conductance;
+    matrix[aIdx][bIdx] -= conductance;
+    matrix[bIdx][aIdx] -= conductance;
+    return;
+  }
+
+  if (aIdx !== null) {
+    matrix[aIdx][aIdx] += conductance;
+  }
+
+  if (bIdx !== null) {
+    matrix[bIdx][bIdx] += conductance;
+  }
+}
+
+function solveCircuit() {
+  if (!state.components.length) {
     return {
-      open: true,
-      label: preset === 'series' ? '串联电路（开路）' : preset === 'parallel' ? '并联电路（开路）' : '混合电路（开路）',
-      totalResistance: Infinity,
+      status: '空电路',
       totalCurrent: 0,
-      totalPower: 0,
+      totalResistance: Infinity,
+      power: 0,
       brightness: 0,
-      nodeVoltages: { g: 0 },
-      branchCurrents: [],
-      sourceCurrent: 0,
+      open: true,
+      messages: [],
     };
   }
 
-  const sourceValue = batteryVoltage;
-  let nodeList = ['g'];
-  let voltageSources = [];
-  let resistors = [];
+  const terminals = [];
+  const ds = new DisjointSet();
 
-  if (preset === 'series') {
-    nodeList = ['n1', 'n2', 'g'];
-    voltageSources.push({ a: 'n1', b: 'g', value: sourceValue });
-    resistors.push(
-      { name: '灯泡1', a: 'n1', b: 'n2', r: bulbResistance },
-      { name: '灯泡2', a: 'n2', b: 'g', r: bulbResistance },
-    );
-  } else if (preset === 'parallel') {
-    nodeList = ['n1', 'g'];
-    voltageSources.push({ a: 'n1', b: 'g', value: sourceValue });
-    resistors.push(
-      { name: '灯泡A', a: 'n1', b: 'g', r: bulbResistance },
-      { name: '灯泡B', a: 'n1', b: 'g', r: bulbResistance },
-    );
-  } else {
-    nodeList = ['n1', 'n2', 'g'];
-    voltageSources.push({ a: 'n1', b: 'g', value: sourceValue });
-    resistors.push(
-      { name: '灯泡A', a: 'n1', b: 'n2', r: bulbResistance },
-      { name: '灯泡B', a: 'n2', b: 'g', r: bulbResistance },
-      { name: '灯泡C', a: 'n1', b: 'g', r: bulbResistance * 2 },
-    );
-  }
-
-  const nodes = nodeList.filter((n) => n !== 'g');
-  const nodeIndex = new Map(nodes.map((node, idx) => [node, idx]));
-  const size = nodes.length + voltageSources.length;
-  const A = Array.from({ length: size }, () => Array(size).fill(0));
-  const z = Array(size).fill(0);
-
-  for (const res of resistors) {
-    const aIndex = nodeIndex.get(res.a);
-    const bIndex = nodeIndex.get(res.b);
-    const g = 1 / res.r;
-
-    if (aIndex !== undefined && bIndex !== undefined) {
-      A[aIndex][aIndex] += g;
-      A[bIndex][bIndex] += g;
-      A[aIndex][bIndex] -= g;
-      A[bIndex][aIndex] -= g;
-    } else if (aIndex !== undefined) {
-      A[aIndex][aIndex] += g;
-    } else if (bIndex !== undefined) {
-      A[bIndex][bIndex] += g;
+  state.components.forEach((component) => {
+    for (let i = 0; i < 2; i += 1) {
+      const key = terminalId(component.id, i);
+      terminals.push({ componentId: component.id, index: i, key });
+      ds.ensure(key);
     }
-  }
-
-  voltageSources.forEach((src, idx) => {
-    const row = nodes.length + idx;
-    const aIndex = nodeIndex.get(src.a);
-    const bIndex = nodeIndex.get(src.b);
-
-    if (aIndex !== undefined) {
-      A[aIndex][row] += 1;
-      A[row][aIndex] += 1;
-    }
-    if (bIndex !== undefined) {
-      A[bIndex][row] -= 1;
-      A[row][bIndex] -= 1;
-    }
-    z[row] = src.value;
   });
 
-  const x = solveLinearSystem(A, z);
-  const nodeVoltages = Object.fromEntries(nodes.map((node, idx) => [node, x[idx] ?? 0]));
-  const branchCurrents = resistors.map((res) => {
-    const aV = res.a === 'g' ? 0 : (nodeVoltages[res.a] ?? 0);
-    const bV = res.b === 'g' ? 0 : (nodeVoltages[res.b] ?? 0);
-    const current = (aV - bV) / res.r;
+  state.wires.forEach((wire) => {
+    ds.union(wire.a, wire.b);
+  });
+
+  const rootMap = new Map();
+  terminals.forEach((terminal) => {
+    const root = ds.find(terminal.key);
+    if (!rootMap.has(root)) rootMap.set(root, []);
+    rootMap.get(root).push(terminal);
+  });
+
+  const roots = [...rootMap.keys()];
+  let groundRoot = null;
+
+  for (const component of state.components) {
+    if (component.type === 'battery') {
+      const pos = terminalId(component.id, 0);
+      const neg = terminalId(component.id, 1);
+      const posRoot = ds.find(pos);
+      const negRoot = ds.find(neg);
+      if (posRoot !== negRoot) {
+        groundRoot = negRoot;
+        break;
+      }
+    }
+  }
+
+  if (!groundRoot && roots.length) {
+    groundRoot = roots[0];
+  }
+
+  const activeNodes = roots.filter((root) => root !== groundRoot);
+  const nodeIndex = new Map(activeNodes.map((root, index) => [root, index]));
+
+  const voltageSources = [];
+  state.components.forEach((component) => {
+    if (component.type !== 'battery') return;
+    const a = terminalId(component.id, 0);
+    const b = terminalId(component.id, 1);
+    const rootA = ds.find(a);
+    const rootB = ds.find(b);
+    if (rootA === rootB) return;
+    voltageSources.push({
+      componentId: component.id,
+      a: rootA,
+      b: rootB,
+      value: component.voltage,
+    });
+  });
+
+  const totalSize = activeNodes.length + voltageSources.length;
+  const A = Array.from({ length: totalSize }, () => Array(totalSize).fill(0));
+  const z = Array(totalSize).fill(0);
+
+  state.components.forEach((component) => {
+    const termA = terminalId(component.id, 0);
+    const termB = terminalId(component.id, 1);
+    const rootA = ds.find(termA);
+    const rootB = ds.find(termB);
+
+    let conductance = 0;
+    if (component.type === 'bulb' || component.type === 'resistor') {
+      conductance = 1 / Math.max(component.resistance, 1e-6);
+    }
+    if (component.type === 'switch' && component.closed) {
+      conductance = 1 / Math.max(component.resistance, 1e-6);
+    }
+
+    if (conductance > 0 && rootA !== rootB) {
+      const nodeA = rootA !== groundRoot ? nodeIndex.get(rootA) : null;
+      const nodeB = rootB !== groundRoot ? nodeIndex.get(rootB) : null;
+      addConductance(A, nodeIndex, rootA, rootB, conductance);
+    }
+  });
+
+  voltageSources.forEach((source, index) => {
+    const sourceIndex = activeNodes.length + index;
+    const nodeA = source.a !== groundRoot ? nodeIndex.get(source.a) : null;
+    const nodeB = source.b !== groundRoot ? nodeIndex.get(source.b) : null;
+
+    if (nodeA !== null) {
+      A[nodeA][sourceIndex] += 1;
+      A[sourceIndex][nodeA] += 1;
+    }
+    if (nodeB !== null) {
+      A[nodeB][sourceIndex] -= 1;
+      A[sourceIndex][nodeB] -= 1;
+    }
+    z[sourceIndex] = source.value;
+  });
+
+  if (totalSize === 0) {
     return {
-      ...res,
-      current,
-      voltageDrop: aV - bV,
+      status: '未形成闭合回路',
+      totalCurrent: 0,
+      totalResistance: Infinity,
+      power: 0,
+      brightness: 0,
+      open: true,
+      messages: ['请至少连接一个电池和一条闭合回路。'],
     };
-  });
+  }
 
-  const sourceCurrent = voltageSources.reduce((sum, src, idx) => {
-    const sourceFlow = x[nodes.length + idx] ?? 0;
-    return sum + sourceFlow;
-  }, 0);
+  try {
+    const solution = solveLinearSystem(A, z);
+    const nodeVoltages = new Map();
+    activeNodes.forEach((root) => {
+      const idx = nodeIndex.get(root);
+      nodeVoltages.set(root, solution[idx] ?? 0);
+    });
 
-  const totalResistance = Math.abs(sourceValue / (sourceCurrent || 1e-9));
-  const totalCurrent = Math.abs(sourceCurrent);
-  const totalPower = sourceValue * totalCurrent;
+    let totalSourceCurrent = 0;
+    voltageSources.forEach((source, index) => {
+      const sourceIndex = activeNodes.length + index;
+      totalSourceCurrent += Math.abs(solution[sourceIndex] ?? 0);
+    });
 
-  const brightness = (() => {
-    const reference = sourceValue / Math.max(bulbResistance, 1);
-    const currentRatio = totalCurrent / Math.max(reference, 1e-6);
-    return Math.min(100, Math.max(0, currentRatio * 100));
-  })();
+    const batterySource = voltageSources[0];
+    const sourceVoltage = batterySource ? batterySource.value : 0;
+    const totalCurrent = totalSourceCurrent || 0;
+    const totalResistance = totalCurrent > 1e-9 ? sourceVoltage / totalCurrent : Infinity;
+    const totalPower = sourceVoltage * totalCurrent;
 
-  return {
-    open: false,
-    label: preset === 'series' ? '串联电路' : preset === 'parallel' ? '并联电路' : '混合电路',
-    totalResistance,
-    totalCurrent,
-    totalPower,
-    brightness,
-    nodeVoltages,
-    branchCurrents,
-    sourceCurrent,
-  };
+    const bulbCurrents = state.components
+      .filter((component) => component.type === 'bulb')
+      .map((component) => {
+        const a = terminalId(component.id, 0);
+        const b = terminalId(component.id, 1);
+        const rootA = ds.find(a);
+        const rootB = ds.find(b);
+        const va = rootA === groundRoot ? 0 : (nodeVoltages.get(rootA) ?? 0);
+        const vb = rootB === groundRoot ? 0 : (nodeVoltages.get(rootB) ?? 0);
+        const current = (va - vb) / Math.max(component.resistance, 1e-6);
+        return { current, power: Math.pow(current, 2) * component.resistance };
+      });
+
+    const bulbTotalPower = bulbCurrents.reduce((sum, item) => sum + item.power, 0);
+    const brightness = Math.min(100, Math.max(0, (bulbTotalPower / 30) * 100));
+
+    return {
+      status: totalCurrent > 0 ? '回路已闭合' : '回路无电流',
+      totalCurrent,
+      totalResistance,
+      power: totalPower,
+      brightness,
+      open: totalCurrent <= 0.0001,
+      messages: totalCurrent > 0 ? ['电路已形成闭合回路并成功求解。'] : ['当前回路尚未形成有效闭合。'],
+    };
+  } catch (error) {
+    return {
+      status: '求解失败',
+      totalCurrent: 0,
+      totalResistance: Infinity,
+      power: 0,
+      brightness: 0,
+      open: true,
+      messages: [error.message || '求解失败。'],
+    };
+  }
 }
 
 function updateReadings() {
-  const result = createCircuit(state.preset, state.batteryVoltage, state.bulbResistance, state.switchClosed);
+  const result = solveCircuit();
+  state.lastSolved = result;
 
-  const currentText = result.open ? '0.00 A' : `${formatNumber(result.totalCurrent, 2)} A`;
-  const powerText = result.open ? '0.00 W' : `${formatNumber(result.totalPower, 2)} W`;
-  const brightnessText = result.open ? '0%' : `${Math.round(result.brightness)}%`;
-  const resistanceText = result.open ? '∞ Ω' : `${formatNumber(result.totalResistance, 2)} Ω`;
-
-  els.currentReading.textContent = currentText;
-  els.powerReading.textContent = powerText;
-  els.brightnessReading.textContent = brightnessText;
-  els.resistanceReading.textContent = resistanceText;
-
-  const physicalStatus = result.open ? `${state.preset === 'series' ? '串联电路' : state.preset === 'parallel' ? '并联电路' : '混合电路'}（开路）` : result.label;
-  els.physicalLabel.textContent = physicalStatus;
-  els.schematicLabel.textContent = physicalStatus;
-
-  renderPhysicalDiagram(result, state);
-  renderSchematicDiagram(result, state);
+  currentDisplay.textContent = `${formatNumber(result.totalCurrent, 2)} A`;
+  resistanceDisplay.textContent = Number.isFinite(result.totalResistance) ? `${formatNumber(result.totalResistance, 2)} Ω` : '∞ Ω';
+  powerDisplay.textContent = `${formatNumber(result.power, 2)} W`;
+  brightnessDisplay.textContent = `${Math.round(result.brightness)}%`;
+  renderBoard();
 }
 
-function setPreset(nextPreset) {
-  state.preset = nextPreset;
-  els.buttons.forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.preset === nextPreset);
-  });
+function renderBoard() {
+  const wiresMarkup = state.wires
+    .map((wire) => {
+      const aComp = findComponentById(wire.a.split(':')[0]);
+      const bComp = findComponentById(wire.b.split(':')[0]);
+      if (!aComp || !bComp) return '';
+      const aIndex = Number(wire.a.split(':')[1]);
+      const bIndex = Number(wire.b.split(':')[1]);
+      const aPos = getTerminalPosition(aComp, aIndex);
+      const bPos = getTerminalPosition(bComp, bIndex);
+      const isActive = state.lastSolved && !state.lastSolved.open;
+      return `<line class="wire ${isActive ? 'glow' : ''}" x1="${aPos.x}" y1="${aPos.y}" x2="${bPos.x}" y2="${bPos.y}" />`;
+    })
+    .join('');
+
+  const componentMarkup = state.components
+    .map((component) => {
+      const terminals = getComponentTerminalPoints(component);
+      const terminalsMarkup = terminals
+        .map((point, index) => `
+          <circle
+            class="terminal"
+            data-component-id="${component.id}"
+            data-terminal-index="${index}"
+            cx="${point.x}"
+            cy="${point.y}"
+            r="7"
+            fill="rgba(255,255,255,0.2)"
+            stroke="rgba(255,255,255,0.9)"
+            stroke-width="1.5"
+          />
+        `)
+        .join('');
+
+      const isSelected = component.id === state.selectedComponentId;
+      const isBattery = component.type === 'battery';
+      const isBulb = component.type === 'bulb';
+      const isSwitch = component.type === 'switch';
+      const isResistor = component.type === 'resistor';
+
+      let body = '';
+      if (isBattery) {
+        const active = state.lastSolved && !state.lastSolved.open;
+        body = `
+          <rect x="${component.x - 28}" y="${component.y - 18}" width="56" height="36" rx="8" fill="rgba(122,231,160,0.22)" stroke="${active ? '#7ae7a0' : '#dfefff'}" stroke-width="2.2" />
+          <line x1="${component.x - 10}" y1="${component.y - 18}" x2="${component.x - 10}" y2="${component.y + 18}" stroke="${active ? '#7ae7a0' : '#dfefff'}" stroke-width="4" />
+          <line x1="${component.x + 10}" y1="${component.y - 24}" x2="${component.x + 10}" y2="${component.y + 24}" stroke="${active ? '#7ae7a0' : '#dfefff'}" stroke-width="4" />
+          <text x="${component.x}" y="${component.y + 36}" text-anchor="middle">${component.voltage}V</text>
+        `;
+      } else if (isBulb) {
+        const active = state.lastSolved && !state.lastSolved.open;
+        body = `
+          <circle cx="${component.x}" cy="${component.y}" r="22" fill="${active ? 'rgba(255,215,106,0.66)' : 'rgba(255,255,255,0.14)'}" stroke="${active ? '#ffd76a' : '#dfefff'}" stroke-width="2.6" />
+          <path d="M ${component.x - 10} ${component.y + 18} L ${component.x} ${component.y + 30} L ${component.x + 10} ${component.y + 18}" stroke="${active ? '#ffd76a' : '#dfefff'}" stroke-width="3" fill="none" />
+          <text x="${component.x}" y="${component.y + 46}" text-anchor="middle">${component.resistance}Ω</text>
+        `;
+      } else if (isSwitch) {
+        body = `
+          <circle cx="${component.x - 16}" cy="${component.y}" r="5" fill="#dfefff" />
+          <circle cx="${component.x + 16}" cy="${component.y}" r="5" fill="#dfefff" />
+          <line x1="${component.x - 11}" y1="${component.y}" x2="${component.x - 3}" y2="${component.y}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x + 3}" y1="${component.y}" x2="${component.x + 12}" y2="${component.y}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x - 2}" y1="${component.y}" x2="${component.x + 8}" y2="${component.y - 12}" stroke="#dfefff" stroke-width="3" />
+          <text x="${component.x}" y="${component.y + 36}" text-anchor="middle">${component.closed ? '闭合' : '断开'}</text>
+        `;
+      } else if (isResistor) {
+        body = `
+          <rect x="${component.x - 36}" y="${component.y - 14}" width="72" height="28" rx="4" fill="rgba(103,213,255,0.18)" stroke="#67d5ff" stroke-width="2.5" />
+          <line x1="${component.x - 34}" y1="${component.y}" x2="${component.x - 16}" y2="${component.y}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x - 16}" y1="${component.y}" x2="${component.x - 8}" y2="${component.y - 12}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x - 8}" y1="${component.y - 12}" x2="${component.x}" y2="${component.y + 12}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x}" y1="${component.y + 12}" x2="${component.x + 8}" y2="${component.y - 12}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x + 8}" y1="${component.y - 12}" x2="${component.x + 16}" y2="${component.y}" stroke="#dfefff" stroke-width="3" />
+          <line x1="${component.x + 16}" y1="${component.y}" x2="${component.x + 34}" y2="${component.y}" stroke="#dfefff" stroke-width="3" />
+          <text x="${component.x}" y="${component.y + 42}" text-anchor="middle">${component.resistance}Ω</text>
+        `;
+      }
+
+      return `
+        <g class="component ${isSelected ? 'selected' : ''}" data-component-id="${component.id}" style="transform-box: fill-box;">
+          ${body}
+          ${terminalsMarkup}
+        </g>
+      `;
+    })
+    .join('');
+
+  svg.innerHTML = `${wiresMarkup}${componentMarkup}`;
+}
+
+function addComponent(type) {
+  const x = 130 + state.components.length * 80;
+  const y = 260 + (state.components.length % 2) * 80;
+  const component = createComponent(type, x, y);
+  state.components.push(component);
   updateReadings();
 }
 
-function line(x1, y1, x2, y2, color = '#dfe9f8', strokeWidth = 4) {
-  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" />`;
-}
-
-function bulb(x, y, active, label) {
-  const glow = active ? '#ffd76a' : '#8ba3bd';
-  const outer = active ? '#ffe38b' : '#c4d0df';
-  return `
-    <g>
-      <circle cx="${x}" cy="${y}" r="18" fill="${glow}" opacity="${active ? 0.45 : 0.1}" />
-      <circle cx="${x}" cy="${y}" r="12" fill="${outer}" stroke="#f7f3d8" stroke-width="2" />
-      <path d="M ${x - 8} ${y + 22} L ${x} ${y + 34} L ${x + 8} ${y + 22}" stroke="#dfe9f8" stroke-width="3" fill="none" />
-      <text x="${x}" y="${y + 48}" text-anchor="middle" fill="#eaf5ff" font-size="10">${label}</text>
-    </g>
-  `;
-}
-
-function battery(x, y, voltage, active) {
-  const color = active ? '#86efac' : '#bfcfe6';
-  return `
-    <g>
-      <rect x="${x}" y="${y - 30}" width="18" height="60" fill="none" stroke="#dfe9f8" stroke-width="3" rx="4" />
-      <line x1="${x + 18}" y1="${y - 14}" x2="${x + 18}" y2="${y + 14}" stroke="${color}" stroke-width="4" />
-      <line x1="${x + 26}" y1="${y - 22}" x2="${x + 26}" y2="${y + 22}" stroke="${color}" stroke-width="4" />
-      <text x="${x + 46}" y="${y + 4}" fill="#eaf5ff" font-size="12">${voltage} V</text>
-    </g>
-  `;
-}
-
-function switchSymbol(x, y, openState) {
-  const onX = openState ? x + 18 : x + 28;
-  const gap = openState ? 22 : 0;
-  return `
-    <g>
-      <circle cx="${x}" cy="${y}" r="5" fill="#dfe9f8" />
-      <circle cx="${x + 44}" cy="${y}" r="5" fill="#dfe9f8" />
-      <line x1="${x + 5}" y1="${y}" x2="${x + 20}" y2="${y}" stroke="#dfe9f8" stroke-width="3" />
-      <line x1="${x + 20}" y1="${y}" x2="${onX}" y2="${y + (openState ? -10 : 0)}" stroke="#dfe9f8" stroke-width="3" />
-      <line x1="${x + 28}" y1="${y}" x2="${x + 40}" y2="${y}" stroke="#dfe9f8" stroke-width="3" />
-      <text x="${x + 22}" y="${y - 18}" fill="#eaf5ff" font-size="11">${openState ? '开' : '合'}</text>
-    </g>
-  `;
-}
-
-function renderPhysicalDiagram(result, settings) {
-  const svg = els.physicalSvg;
-  const active = !result.open;
-  const v = settings.batteryVoltage;
-
-  if (settings.preset === 'series') {
-    svg.innerHTML = `
-      ${line(40, 120, 90, 120)}
-      ${battery(90, 120, v, active)}
-      ${line(140, 120, 210, 120)}
-      ${switchSymbol(200, 120, !settings.switchClosed)}
-      ${line(260, 120, 310, 120)}
-      ${bulb(350, 120, active, 'L1')}
-      ${line(390, 120, 470, 120)}
-      ${bulb(510, 120, active, 'L2')}
-      ${line(550, 120, 590, 120)}
-      ${line(590, 120, 590, 165, '#8fb4da', 2)}
-      ${line(40, 120, 40, 175, '#8fb4da', 2)}
-      ${line(40, 175, 590, 175, '#8fb4da', 2)}
-      ${line(590, 175, 590, 120, '#8fb4da', 2)}
-    `;
+function connectTerminals(componentId, terminalIndex) {
+  const target = `${componentId}:${terminalIndex}`;
+  if (!state.pendingTerminal) {
+    state.pendingTerminal = target;
     return;
   }
 
-  if (settings.preset === 'parallel') {
-    svg.innerHTML = `
-      ${line(40, 120, 90, 120)}
-      ${battery(90, 120, v, active)}
-      ${line(140, 120, 220, 120)}
-      ${switchSymbol(220, 120, !settings.switchClosed)}
-      ${line(275, 120, 330, 120)}
-      ${line(330, 120, 330, 80)}
-      ${line(330, 80, 440, 80)}
-      ${bulb(440, 80, active, 'L1')}
-      ${line(470, 80, 540, 80)}
-      ${line(540, 80, 540, 120)}
-      ${line(330, 120, 330, 160)}
-      ${line(330, 160, 440, 160)}
-      ${bulb(440, 160, active, 'L2')}
-      ${line(470, 160, 540, 160)}
-      ${line(540, 160, 540, 120)}
-      ${line(540, 120, 590, 120)}
-      ${line(40, 120, 40, 180, '#8fb4da', 2)}
-      ${line(40, 180, 590, 180, '#8fb4da', 2)}
-      ${line(590, 180, 590, 120, '#8fb4da', 2)}
-    `;
+  if (state.pendingTerminal === target) {
+    state.pendingTerminal = null;
     return;
   }
 
-  svg.innerHTML = `
-    ${line(40, 120, 90, 120)}
-    ${battery(90, 120, v, active)}
-    ${line(140, 120, 220, 120)}
-    ${switchSymbol(220, 120, !settings.switchClosed)}
-    ${line(275, 120, 330, 120)}
-    ${line(330, 120, 330, 90)}
-    ${bulb(390, 90, active, 'L1')}
-    ${line(420, 90, 500, 90)}
-    ${line(500, 90, 500, 120)}
-    ${line(330, 120, 330, 150)}
-    ${bulb(390, 150, active, 'L2')}
-    ${line(420, 150, 500, 150)}
-    ${line(500, 150, 500, 120)}
-    ${line(500, 120, 590, 120)}
-    ${line(330, 120, 330, 60)}
-    ${line(330, 60, 495, 60)}
-    ${bulb(495, 60, active, 'L3')}
-    ${line(525, 60, 590, 60)}
-    ${line(590, 60, 590, 120)}
-    ${line(40, 120, 40, 175, '#8fb4da', 2)}
-    ${line(40, 175, 590, 175, '#8fb4da', 2)}
-    ${line(590, 175, 590, 120, '#8fb4da', 2)}
-  `;
-}
+  const [sourceId, sourceIndex] = state.pendingTerminal.split(':');
+  const source = `${sourceId}:${sourceIndex}`;
+  const isDuplicate = state.wires.some((wire) => {
+    const sameA = (wire.a === source && wire.b === target) || (wire.a === target && wire.b === source);
+    return sameA;
+  });
 
-function renderSchematicDiagram(result, settings) {
-  const svg = els.schematicSvg;
-  const active = !result.open;
-  const wire = '#dfe9f8';
-
-  if (settings.preset === 'series') {
-    svg.innerHTML = `
-      ${line(60, 120, 130, 120, wire, 3)}
-      ${battery(130, 120, settings.batteryVoltage, active)}
-      ${line(180, 120, 230, 120, wire, 3)}
-      ${line(230, 120, 230, 80, wire, 3)}
-      ${bulb(280, 80, active, 'R1')}
-      ${line(320, 80, 400, 80, wire, 3)}
-      ${line(400, 80, 400, 120, wire, 3)}
-      ${bulb(440, 120, active, 'R2')}
-      ${line(480, 120, 560, 120, wire, 3)}
-      ${line(560, 120, 560, 170, wire, 3)}
-      ${line(60, 170, 560, 170, wire, 3)}
-      ${switchSymbol(185, 120, !settings.switchClosed)}
-    `;
-    return;
+  if (!isDuplicate) {
+    state.wires.push({ a: source, b: target });
   }
-
-  if (settings.preset === 'parallel') {
-    svg.innerHTML = `
-      ${line(60, 120, 130, 120, wire, 3)}
-      ${battery(130, 120, settings.batteryVoltage, active)}
-      ${line(180, 120, 220, 120, wire, 3)}
-      ${switchSymbol(220, 120, !settings.switchClosed)}
-      ${line(275, 120, 330, 120, wire, 3)}
-      ${line(330, 120, 330, 70, wire, 3)}
-      ${bulb(390, 70, active, 'R1')}
-      ${line(430, 70, 500, 70, wire, 3)}
-      ${line(500, 70, 500, 120, wire, 3)}
-      ${line(330, 120, 330, 170, wire, 3)}
-      ${bulb(390, 170, active, 'R2')}
-      ${line(430, 170, 500, 170, wire, 3)}
-      ${line(500, 170, 500, 120, wire, 3)}
-      ${line(500, 120, 560, 120, wire, 3)}
-      ${line(60, 170, 560, 170, wire, 3)}
-    `;
-    return;
-  }
-
-  svg.innerHTML = `
-    ${line(60, 120, 130, 120, wire, 3)}
-    ${battery(130, 120, settings.batteryVoltage, active)}
-    ${line(180, 120, 220, 120, wire, 3)}
-    ${switchSymbol(220, 120, !settings.switchClosed)}
-    ${line(275, 120, 330, 120, wire, 3)}
-    ${line(330, 120, 330, 70, wire, 3)}
-    ${bulb(390, 70, active, 'R1')}
-    ${line(430, 70, 510, 70, wire, 3)}
-    ${line(510, 70, 510, 120, wire, 3)}
-    ${line(330, 120, 330, 170, wire, 3)}
-    ${bulb(390, 170, active, 'R2')}
-    ${line(430, 170, 510, 170, wire, 3)}
-    ${line(510, 170, 510, 120, wire, 3)}
-    ${line(510, 120, 560, 120, wire, 3)}
-    ${line(330, 120, 330, 40, wire, 3)}
-    ${line(330, 40, 460, 40, wire, 3)}
-    ${bulb(500, 40, active, 'R3')}
-    ${line(540, 40, 560, 40, wire, 3)}
-    ${line(560, 40, 560, 120, wire, 3)}
-    ${line(60, 170, 560, 170, wire, 3)}
-  `;
-}
-
-function bindControls() {
-  els.batteryVoltage.addEventListener('input', (event) => {
-    state.batteryVoltage = Number(event.target.value);
-    els.batteryVoltageValue.textContent = `${state.batteryVoltage} V`;
-    updateReadings();
-  });
-
-  els.bulbResistance.addEventListener('input', (event) => {
-    state.bulbResistance = Number(event.target.value);
-    els.bulbResistanceValue.textContent = `${state.bulbResistance} Ω`;
-    updateReadings();
-  });
-
-  els.switchClosed.addEventListener('change', (event) => {
-    state.switchClosed = event.target.checked;
-    updateReadings();
-  });
-
-  els.buttons.forEach((button) => {
-    button.addEventListener('click', () => setPreset(button.dataset.preset));
-  });
-}
-
-function initialize() {
-  els.batteryVoltageValue.textContent = `${state.batteryVoltage} V`;
-  els.bulbResistanceValue.textContent = `${state.bulbResistance} Ω`;
-  bindControls();
+  state.pendingTerminal = null;
   updateReadings();
 }
 
-initialize();
+function deleteSelectedComponent() {
+  if (!state.selectedComponentId) return;
+  state.components = state.components.filter((component) => component.id !== state.selectedComponentId);
+  state.wires = state.wires.filter((wire) => {
+    const [aId] = wire.a.split(':');
+    const [bId] = wire.b.split(':');
+    return aId !== state.selectedComponentId && bId !== state.selectedComponentId;
+  });
+  state.selectedComponentId = null;
+  updateReadings();
+}
+
+svg.addEventListener('pointerdown', (event) => {
+  const terminalEl = event.target.closest('.terminal');
+  if (terminalEl) {
+    const componentId = terminalEl.dataset.componentId;
+    const terminalIndex = Number(terminalEl.dataset.terminalIndex);
+    if (state.tool === 'connect') {
+      connectTerminals(componentId, terminalIndex);
+      return;
+    }
+    if (state.tool === 'delete') {
+      const component = findComponentById(componentId);
+      if (component) {
+        state.components = state.components.filter((item) => item.id !== componentId);
+        state.wires = state.wires.filter((wire) => {
+          const [aId] = wire.a.split(':');
+          const [bId] = wire.b.split(':');
+          return aId !== componentId && bId !== componentId;
+        });
+        updateReadings();
+      }
+      return;
+    }
+  }
+
+  const componentEl = event.target.closest('.component');
+  if (componentEl) {
+    const componentId = componentEl.dataset.componentId;
+    state.selectedComponentId = componentId;
+    const component = findComponentById(componentId);
+    if (!component) return;
+
+    state.drag = {
+      id: componentId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: component.x,
+      originY: component.y,
+    };
+    componentEl.setPointerCapture?.(event.pointerId);
+    renderBoard();
+    return;
+  }
+
+  if (state.tool === 'delete' && !event.target.closest('.component')) {
+    state.selectedComponentId = null;
+    renderBoard();
+  }
+});
+
+window.addEventListener('pointermove', (event) => {
+  if (!state.drag) return;
+  const { id, startX, startY, originX, originY } = state.drag;
+  const component = findComponentById(id);
+  if (!component) return;
+
+  const dx = (event.clientX - startX) / 1.2;
+  const dy = (event.clientY - startY) / 1.2;
+  component.x = Math.max(65, Math.min(820, originX + dx));
+  component.y = Math.max(80, Math.min(460, originY + dy));
+  renderBoard();
+});
+
+window.addEventListener('pointerup', () => {
+  state.drag = null;
+  updateReadings();
+});
+
+window.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  const wireLine = event.target.closest('.wire');
+  if (!wireLine) return;
+  const index = state.wires.findIndex((wire) => {
+    const aComp = findComponentById(wire.a.split(':')[0]);
+    const bComp = findComponentById(wire.b.split(':')[0]);
+    if (!aComp || !bComp) return false;
+    const aPos = getTerminalPosition(aComp, Number(wire.a.split(':')[1]));
+    const bPos = getTerminalPosition(bComp, Number(wire.b.split(':')[1]));
+    const mx = (aPos.x + bPos.x) / 2;
+    const my = (aPos.y + bPos.y) / 2;
+    return Math.abs(event.offsetX - mx) < 18 && Math.abs(event.offsetY - my) < 18;
+  });
+  if (index >= 0) {
+    state.wires.splice(index, 1);
+    updateReadings();
+  }
+});
+
+for (const button of document.querySelectorAll('.component-button')) {
+  button.addEventListener('click', () => addComponent(button.dataset.type));
+}
+
+for (const button of document.querySelectorAll('.tool-button')) {
+  button.addEventListener('click', () => {
+    state.tool = button.dataset.tool;
+    document.querySelectorAll('.tool-button').forEach((item) => item.classList.toggle('active', item === button));
+    renderBoard();
+  });
+}
+
+solveBtn.addEventListener('click', updateReadings);
+
+makeDefaultCircuit();
+updateReadings();
+renderBoard();

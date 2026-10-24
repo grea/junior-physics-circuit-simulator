@@ -1,102 +1,203 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>初中物理电路模拟器</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="page-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">教学演示工具</p>
-          <h1>初中物理电路模拟器</h1>
-        </div>
-        <div class="badge">MNA 求解器</div>
-      </header>
+:root {
+  --bg: #071522;
+  --bg2: #112136;
+  --panel: rgba(14, 34, 52, 0.9);
+  --panel-strong: rgba(19, 42, 63, 0.95);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #edf8ff;
+  --muted: #b8cfe7;
+  --blue: #67d5ff;
+  --blue-strong: #3fc4ef;
+  --gold: #ffd76a;
+  --green: #7ae7a0;
+  --red: #ff7a7a;
+  --grid: rgba(255, 255, 255, 0.05);
+  --wire: #e8f2ff;
+  --shadow: 0 24px 48px rgba(0, 0, 0, 0.28);
+}
 
-      <main class="layout">
-        <aside class="sidebar panel">
-          <h2>电路类型</h2>
-          <div class="preset-grid">
-            <button class="preset-btn active" data-preset="series">串联电路</button>
-            <button class="preset-btn" data-preset="parallel">并联电路</button>
-            <button class="preset-btn" data-preset="mixed">混合电路</button>
-          </div>
+* {
+  box-sizing: border-box;
+}
 
-          <div class="control-group">
-            <label for="batteryVoltage">电池电压</label>
-            <div class="range-wrap">
-              <input id="batteryVoltage" type="range" min="1" max="24" step="1" value="9" />
-              <span id="batteryVoltageValue">9 V</span>
-            </div>
-          </div>
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: radial-gradient(circle at top, #163958 0%, var(--bg) 42%, #050b12 100%);
+  color: var(--text);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
 
-          <div class="control-group">
-            <label for="bulbResistance">灯泡电阻</label>
-            <div class="range-wrap">
-              <input id="bulbResistance" type="range" min="4" max="60" step="1" value="12" />
-              <span id="bulbResistanceValue">12 Ω</span>
-            </div>
-          </div>
+button {
+  font: inherit;
+}
 
-          <div class="control-group checkbox-wrap">
-            <label class="check-row">
-              <input id="switchClosed" type="checkbox" checked />
-              <span>开关闭合</span>
-            </label>
-          </div>
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: 100vh;
+  gap: 20px;
+  padding: 18px;
+}
 
-          <div class="formula-box">
-            <h3>关键公式</h3>
-            <p>欧姆定律：V = I × R</p>
-            <p>串联：R 总 = R1 + R2 + ...</p>
-            <p>并联：1/R 总 = 1/R1 + 1/R2 + ...</p>
-          </div>
-        </aside>
+.sidebar {
+  display: flex;
+}
 
-        <section class="content panel">
-          <div class="stats-grid">
-            <div class="stat-card">
-              <span class="label">总电流</span>
-              <strong id="currentReading">0.00 A</strong>
-            </div>
-            <div class="stat-card">
-              <span class="label">总功率</span>
-              <strong id="powerReading">0.00 W</strong>
-            </div>
-            <div class="stat-card">
-              <span class="label">亮度</span>
-              <strong id="brightnessReading">0%</strong>
-            </div>
-            <div class="stat-card">
-              <span class="label">总电阻</span>
-              <strong id="resistanceReading">0 Ω</strong>
-            </div>
-          </div>
+.panel {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 20px 18px;
+}
 
-          <div class="drawings">
-            <article class="diagram-card">
-              <div class="diagram-header">
-                <h2>实物图</h2>
-                <span id="physicalLabel">串联电路</span>
-              </div>
-              <svg id="physicalSvg" viewBox="0 0 620 260" aria-label="实物图"></svg>
-            </article>
+h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.04em;
+}
 
-            <article class="diagram-card">
-              <div class="diagram-header">
-                <h2>电路图</h2>
-                <span id="schematicLabel">串联电路</span>
-              </div>
-              <svg id="schematicSvg" viewBox="0 0 620 260" aria-label="电路图"></svg>
-            </article>
-          </div>
-        </section>
-      </main>
-    </div>
+.subtitle {
+  margin: 6px 0 18px;
+  color: var(--muted);
+}
 
-    <script src="app.js"></script>
-  </body>
-</html>
+.tool-group,
+.palette {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.tool-group {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.palette {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tool-button,
+.component-button,
+.primary-button {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.tool-button,
+.component-button {
+  padding: 12px 10px;
+}
+
+.tool-button:hover,
+.component-button:hover,
+.primary-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(103, 213, 255, 0.8);
+  background: rgba(103, 213, 255, 0.12);
+}
+
+.tool-button.active {
+  background: rgba(103, 213, 255, 0.2);
+  border-color: rgba(103, 213, 255, 0.8);
+}
+
+.primary-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(93, 189, 255, 0.15), rgba(122, 231, 160, 0.12));
+}
+
+.panel-block {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 12px;
+  margin-bottom: 18px;
+}
+
+.line-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 2px;
+  color: var(--muted);
+}
+
+.line-row strong {
+  color: var(--text);
+}
+
+.formula-box h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+
+.formula-box p {
+  margin: 6px 0;
+  color: var(--muted);
+}
+
+.board-wrap {
+  background: rgba(11, 27, 39, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+#board {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  display: block;
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.02));
+  background-size: 20px 20px, 20px 20px, 100% 100%;
+}
+
+.component {
+  cursor: grab;
+}
+
+.component:active {
+  cursor: grabbing;
+}
+
+.terminal {
+  cursor: crosshair;
+}
+
+.wire {
+  stroke: var(--wire);
+  stroke-linecap: round;
+  stroke-width: 5;
+  fill: none;
+}
+
+.wire.glow {
+  stroke: var(--blue);
+  stroke-width: 7;
+  opacity: 0.9;
+}
+
+text {
+  font-size: 12px;
+  fill: var(--text);
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+}

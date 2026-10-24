@@ -1,48 +1,66 @@
-# 初中物理电路模拟器
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>初中物理电路模拟器（教具版）</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="panel">
+          <h1>电路教具</h1>
+          <p class="subtitle">可拖拽 · 可连线 · MNA 求解</p>
 
-一个面向初中物理教学的交互式电路模拟器，支持：
+          <div class="tool-group">
+            <button class="tool-button active" data-tool="select">选择</button>
+            <button class="tool-button" data-tool="connect">连接</button>
+            <button class="tool-button" data-tool="delete">删除</button>
+          </div>
 
-- 串联电路
-- 并联电路
-- 混合电路
-- 电池、电阻、灯泡、开关
-- 基于 MNA（Modified Nodal Analysis）方法求解节点电压和支路电流
-- 同时展示：实物图 / 电路图
+          <div class="palette">
+            <button class="component-button" data-type="battery">电池</button>
+            <button class="component-button" data-type="bulb">灯泡</button>
+            <button class="component-button" data-type="resistor">电阻</button>
+            <button class="component-button" data-type="switch">开关</button>
+          </div>
 
-## 运行方式
+          <div class="panel-block">
+            <div class="line-row">
+              <span>总电流</span>
+              <strong id="currentDisplay">0.00 A</strong>
+            </div>
+            <div class="line-row">
+              <span>总电阻</span>
+              <strong id="resistanceDisplay">∞ Ω</strong>
+            </div>
+            <div class="line-row">
+              <span>总功率</span>
+              <strong id="powerDisplay">0.00 W</strong>
+            </div>
+            <div class="line-row">
+              <span>亮度</span>
+              <strong id="brightnessDisplay">0%</strong>
+            </div>
+          </div>
 
-```bash
-npm install
-npm start
-```
+          <div class="panel-block formula-box">
+            <h2>课堂公式</h2>
+            <p>欧姆定律：V = I × R</p>
+            <p>串联：R 总 = R1 + R2 + ...</p>
+            <p>并联：1/R 总 = 1/R1 + 1/R2 + ...</p>
+          </div>
 
-然后打开浏览器访问：
+          <button id="solveBtn" class="primary-button">重新计算电路</button>
+        </div>
+      </aside>
 
-```text
-http://localhost:3000
-```
+      <main class="board-wrap">
+        <svg id="board" viewBox="0 0 960 560" aria-label="电路板"></svg>
+      </main>
+    </div>
 
-## 设计思路
-
-- 使用 MNA 做电路求解，适合处理电压源和电阻组成的教学电路。
-- 利用 SVG 直接绘制电路图与实物图，便于课堂讲解。
-- 对灯泡使用等效电阻模型，显示电流、功率和亮度。 
-
-## 适用场景
-
-- 课堂演示
-- 物理实验辅助教学
-- 学生自主练习
-- 竞赛/项目展示
-
-## 目录说明
-
-- `index.html`：页面结构
-- `styles.css`：界面样式
-- `app.js`：电路求解与渲染逻辑
-- `server.js`：静态服务器
-
-## 版权说明
-
-本项目旨在教育与教学展示使用，适合学习和二次开发。
-
+    <script src="app.js"></script>
+  </body>
+</html>
