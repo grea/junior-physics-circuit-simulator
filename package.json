@@ -1,0 +1,10 @@
+{
+  "name": "junior-physics-circuit-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "初中物理电路模拟器：基于 MNA 求解器的串联/并联/混合电路教学工具",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}
